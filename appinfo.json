@@ -1,0 +1,18 @@
+{
+    "id": "com.anohene.stalkerplayer",
+    "version": "1.0.2",
+    "vendor": "Anohene",
+    "type": "web",
+    "main": "index.html",
+    "title": "Stalker Portal Player",
+    "icon": "icon.png",
+    "largeIcon": "largeIcon.png",
+    "uiRevision": 3,
+    "trustLevel": "default",
+    "requiredPermissions": [
+        "media.audio",
+        "media.video",
+        "network.status"
+    ],
+    "disableBackHistoryAPI": true
+}

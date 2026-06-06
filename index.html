@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stalker Portal Player</title>
+    <link rel="stylesheet" href="css/style.css">
+    <!-- WebOS library -->
+    <script src="webOSTVjs-1.2.10/webOSTV.js" charset="utf-8"></script>
+    <!-- hls.js for HLS/TS streaming -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+    <!-- mpegts.js for TS/FLV streaming -->
+    <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.min.js"></script>
+</head>
+
+<body>
+    <div id="app">
+        <div id="login-screen" class="screen">
+            <h1>Stalker Portal Player</h1>
+            <div class="input-group">
+                <label for="portal-url">Portal URL:</label>
+                <input type="text" id="portal-url" placeholder="http://example.com/stalker_portal/c/"
+                    value="http://5tv.pro/c/">
+            </div>
+            <div class="input-group">
+                <label for="mac-address">MAC Address:</label>
+                <input type="text" id="mac-address" placeholder="00:1A:79:..." value="00:1A:79:16:19:22">
+                <small>MAC authentication is usually handled by the device/middleware.</small>
+            </div>
+            <div class="input-group">
+                <label for="username">Username:</label>
+                <input type="text" id="username" placeholder="Optional">
+            </div>
+            <div class="input-group">
+                <label for="password">Password:</label>
+                <input type="password" id="password" placeholder="Optional">
+            </div>
+            <button id="connect-btn">Connect</button>
+            <div id="status-message"></div>
+        </div>
+
+        <div id="loading-screen" class="screen hidden">
+            <div class="spinner"></div>
+            <div id="loading-message" class="loading-message">Connecting...</div>
+        </div>
+
+        <div id="main-menu" class="screen hidden">
+            <div class="main-content">
+                <!-- Sidebar: Categories & Modes -->
+                <div class="sidebar">
+                    <div class="mode-switcher">
+                        <div class="mode-btn active" id="mode-tv" tabindex="0">
+                            <img src="css/icons/tv.svg" class="icon" alt="TV">
+                            <span>TV</span>
+                        </div>
+                        <div class="mode-btn" id="mode-vod" tabindex="0">
+                            <img src="css/icons/film.svg" class="icon" alt="Movies">
+                            <span>Movies</span>
+                        </div>
+                        <div class="mode-btn" id="mode-settings" tabindex="0">
+                            <img src="css/icons/cog-four.svg" class="icon" alt="Settings">
+                            <span>Settings</span>
+                        </div>
+                    </div>
+                    <div class="category-list-container">
+                        <h3>Categories</h3>
+                        <ul id="category-list">
+                            <!-- Categories populated here -->
+                            <li class="category-item selected" data-id="all" tabindex="0">All</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- TV View: List + Preview -->
+                <div id="tv-view-container" class="content-split-view">
+                    <!-- Middle Panel: Channel/Content List -->
+                    <div class="channel-panel">
+                        <div class="channel-header">
+                            <h2 id="list-title">Channels</h2>
+                        </div>
+                        <div class="search-container">
+                            <input type="text" id="channel-search" placeholder="Search..." autocomplete="off">
+                        </div>
+                        <ul id="channel-list">
+                            <!-- Content populated here -->
+                        </ul>
+                    </div>
+
+                    <!-- Right Panel: Video Preview & EPG -->
+                    <div class="preview-panel">
+                        <div class="video-preview-container">
+                            <video id="preview-player"></video>
+                            <button id="preview-fs-btn" class="preview-fs-btn hidden" title="Go Fullscreen">⛶</button>
+                        </div>
+                        <div id="epg-info" class="epg-info">
+                            <div id="epg-channel-name" class="epg-channel-name"></div>
+                            <div id="epg-program-title" class="epg-program-title"></div>
+                            <div id="epg-program-time" class="epg-program-time"></div>
+                            <div id="epg-program-desc" class="epg-program-desc"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Movie View: Grid -->
+                <div id="movie-view-container" class="content-full-view hidden">
+                    <div class="movie-header">
+                        <h2 id="movie-list-title">Movies</h2>
+                        <div class="search-container movie-search">
+                            <input type="text" id="movie-search" placeholder="Search movies..." autocomplete="off">
+                        </div>
+                    </div>
+                    <div id="movie-grid" class="movie-grid">
+                        <!-- Movie Cards populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="player-screen" class="screen hidden">
+            <video id="video-player" autoplay controls style="width: 100%; height: 100%;"></video>
+
+            <!-- Loading Spinner -->
+            <div id="player-loader" class="hidden">
+                <div class="spinner"></div>
+            </div>
+
+            <!-- TV-Style Info Banner -->
+            <div id="info-banner" class="info-banner">
+                <div class="banner-content">
+                    <!-- Channel Info -->
+                    <div class="banner-channel">
+                        <img id="banner-logo" class="banner-logo" src="" alt="">
+                        <div class="banner-channel-info">
+                            <div id="banner-channel-number" class="banner-channel-number"></div>
+                            <div id="banner-channel-name" class="banner-channel-name"></div>
+                        </div>
+                    </div>
+
+                    <!-- Program Info -->
+                    <div class="banner-program">
+                        <div id="banner-program-title" class="banner-program-title"></div>
+                        <div id="banner-program-time" class="banner-program-time"></div>
+                        <div class="banner-progress">
+                            <div id="banner-progress-bar" class="banner-progress-bar"></div>
+                        </div>
+                    </div>
+
+                    <!-- Video Quality & Controls -->
+                    <div class="banner-right">
+                        <div class="banner-quality">
+                            <span id="banner-resolution" class="quality-badge">HD</span>
+                        </div>
+                        <div class="banner-time" id="banner-current-time"></div>
+                    </div>
+                </div>
+
+                <!-- Navigation hint -->
+                <div class="banner-hint">
+                    <span>◀ Back to exit</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/stalker.js"></script>
+    <script src="js/app.js"></script>
+</body>
+
+</html>

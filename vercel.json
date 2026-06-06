@@ -1,0 +1,23 @@
+{
+  "version": 2,
+  "functions": {
+    "api/server.js": {
+      "maxDuration": 60,
+      "includeFiles": "**"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "/api/server.js"
+    },
+    {
+      "source": "/proxy/:path*",
+      "destination": "/api/server.js"
+    },
+    {
+      "source": "/fetch",
+      "destination": "/api/server.js"
+    }
+  ]
+}

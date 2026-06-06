@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>IPTV</title>
+<link rel="icon" href="data:,">
+<script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.min.js"></script>
+<script src="js/stalker.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;background:#0a0a0f;color:#e8e8f0;font:14px/1.5 system-ui,sans-serif;overflow:hidden}
+input,button{font:inherit}
+#login{align-items:center;justify-content:center;display:flex;padding:20px;background:radial-gradient(ellipse at 30% 20%,#0d2a20,#0a0a0f 70%);min-height:100%}
+.box{width:100%;max-width:380px;background:#121218;border:1px solid #282836;border-radius:16px;padding:28px 24px}
+.box h1{font-size:22px;margin-bottom:4px}
+.box .sub{color:#7878a0;font-size:13px;margin-bottom:16px}
+.box input{width:100%;padding:10px 14px;border:1px solid #282836;border-radius:8px;background:#1a1a24;color:#e8e8f0;outline:none;margin-bottom:8px}
+.box input:focus{border-color:#00d4a0}
+.box button{width:100%;padding:10px;border:none;border-radius:8px;background:#00d4a0;color:#000;font-weight:600;cursor:pointer;margin-top:4px}
+.box button:disabled{opacity:.4}
+#status{font-size:13px;text-align:center;min-height:20px;margin-top:10px}
+
+#main{display:none;height:100%;flex-direction:column}
+#main.show{display:flex}
+.header{display:flex;align-items:center;gap:10px;padding:8px 12px;background:#121218;border-bottom:1px solid #282836}
+.header h2{font-size:15px;flex-shrink:0}
+.header input{flex:1;max-width:240px;padding:6px 10px;border:1px solid #282836;border-radius:6px;background:#1a1a24;color:#e8e8f0;outline:none}
+.header input:focus{border-color:#00d4a0}
+#cats{display:flex;gap:3px;padding:6px 10px;overflow-x:auto;background:#121218;border-bottom:1px solid #282836}
+#cats button{padding:4px 12px;border:1px solid #282836;border-radius:14px;background:transparent;color:#7878a0;cursor:pointer;font-size:11px;white-space:nowrap}
+#cats button.active{background:#00d4a0;color:#000;border-color:#00d4a0}
+
+#list{flex:1;overflow-y:auto;padding:4px}
+.ch{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;cursor:pointer}
+.ch:hover{background:#1a1a24}
+.ch.sel{background:#00d4a0;color:#000}
+.ch .n{color:#7878a0;font-size:11px;min-width:22px;font-weight:500}
+.ch.sel .n{color:rgba(0,0,0,.4)}
+.ch img{width:24px;height:24px;object-fit:contain;border-radius:3px}
+.ch .nm{flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ch .st{color:#f0b400;cursor:pointer;font-size:16px;padding:0 4px}
+
+#player{position:fixed;inset:0;z-index:100;background:#000;display:none;flex-direction:column}
+#player.show{display:flex}
+#player video{width:100%;height:100%;object-fit:contain;flex:1}
+#player .bar{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;padding:8px 12px;background:linear-gradient(#000a,transparent);z-index:10}
+#player .bar button{background:none;border:none;color:#fff;font-size:20px;cursor:pointer;padding:4px}
+#player .err{position:absolute;bottom:60px;left:20px;right:20px;background:rgba(0,0,0,.9);border-radius:8px;padding:10px 14px;text-align:center;z-index:10;display:none}
+#player .err.show{display:block}
+#player .err .vl{color:#00d4a0;text-decoration:underline;cursor:pointer;font-size:12px;margin-top:4px}
+.loader{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:3}
+.spinner{width:30px;height:30px;border:3px solid #282836;border-top-color:#00d4a0;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="login">
+  <div class="box">
+    <h1>IPTV</h1>
+    <p class="sub">Enter your portal details</p>
+    <input id="portal" type="text" placeholder="Portal URL (http://...)" autocomplete="off">
+    <input id="mac" type="text" placeholder="MAC Address (00:1A:2B:...)" autocomplete="off">
+    <button id="connect">Connect</button>
+    <div id="status"></div>
+  </div>
+</div>
+
+<div id="main">
+  <div class="header">
+    <h2 id="title">TV</h2>
+    <input id="search" type="text" placeholder="Search...">
+  </div>
+  <div id="cats"></div>
+  <div id="list"></div>
+</div>
+
+<div id="player">
+  <video id="vid" controls playsinline></video>
+  <div class="loader" id="load"><div class="spinner"></div></div>
+  <div class="bar">
+    <button id="back">✕</button>
+    <button id="info">ℹ</button>
+  </div>
+  <div class="err" id="err">
+    <div id="err-msg"></div>
+    <div class="vl" id="vlc"></div>
+  </div>
+</div>
+
+<script>
+var $=function(id){return document.getElementById(id)};
+var portal=$('portal'),mac=$('mac'),connect=$('connect'),stEl=$('status');
+var main=$('main'),title=$('title'),cats=$('cats'),list=$('list'),search=$('search');
+var player=$('player'),vid=$('vid'),load=$('load'),back=$('back'),info=$('info');
+var err=$('err'),errMsg=$('err-msg'),vlc=$('vlc');
+
+var client=null,allItems=[],catMap={},catList=[],currentCat='all',currentMode='tv',selCh=null,mpegtsPlayer=null,favs=[];
+
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function setSt(s,e){stEl.textContent=s;stEl.style.color=e?'#f55':'#00d4a0'}
+function getF(){try{return JSON.parse(localStorage.getItem('st_fav')||'[]')}catch(e){return[]}}
+function setF(a){localStorage.setItem('st_fav',JSON.stringify(a))}
+function idF(u){return getF().indexOf(u)!==-1}
+function tgF(u){var a=getF(),i=a.indexOf(u);if(i===-1)a.push(u);else a.splice(i,1);setF(a);return a.indexOf(u)!==-1}
+
+function isTS(u){return /\.ts\b|extension=ts|\.m2ts/i.test(u)}
+function pUrl(u){if(!u||u.indexOf('http:')!==0||location.protocol!=='https:')return u;return location.origin+'/api/stalker/stream-get?url='+encodeURIComponent(u)}
+
+connect.addEventListener('click',async function(){
+  var p=portal.value.trim(),m=mac.value.trim().toUpperCase().replace(/[^A-F0-9]/g,'');
+  if(m.length===12)m=m.match(/.{2}/g).join(':');
+  if(!p||!/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(m)){setSt('Valid URL and MAC required',1);return}
+  connect.disabled=true;connect.textContent='Connecting...';setSt('Connecting...');
+  try{
+    client=new StalkerClient(p,m);
+    await client.authenticate();
+    if(!client.token)throw Error('No token');
+    setSt('Connected!');
+    login.style.display='none';main.classList.add('show');
+    loadMode('tv');
+  }catch(e){setSt('✗ '+e.message,1)}
+  connect.disabled=false;connect.textContent='Connect';
+});
+
+async function loadMode(mode){
+  currentMode=mode;selCh=null;currentCat='all';
+  list.innerHTML='';cats.innerHTML='';
+  if(mpegtsPlayer){mpegtsPlayer.destroy();mpegtsPlayer=null}
+  vid.pause();vid.removeAttribute('src');vid.load();
+  title.textContent={tv:'TV',movies:'Movies',series:'Series'}[mode]||'Channels';
+  search.value='';
+  try{
+    if(mode==='tv'){
+      var g=await client.getGenres();catMap={};catList=[];
+      (g||[]).forEach(function(x){catMap[x.id]=x.title;catList.push(x.id)});
+      catList.sort(function(a,b){return(catMap[a]||'').localeCompare(catMap[b]||'')});
+      renderCats();
+      var chs=await client.getChannels();allItems=(chs||[]).map(function(ch){
+        return{name:ch.name,cmd:ch.url,num:ch.number||'',logo:ch.logo||'',genre_id:String(ch.genre_id||'')}
+      });
+      renderList(allItems);
+    }else{
+      var t=mode==='series'?'series':'vod';
+      var g=await client.getVodCategories(t);catMap={};catList=[];
+      (g||[]).forEach(function(x){catMap[x.id]=x.title;catList.push(x.id)});
+      catList.sort(function(a,b){return(catMap[a]||'').localeCompare(catMap[b]||'')});
+      renderCats();
+      var its=await client.getVodList('all',t);allItems=(its||[]).map(function(m){
+        return{name:m.name,cmd:m.url,num:m.number||'',logo:m.logo||'',genre_id:String(m.genre_id||m.category_id||'')}
+      });
+      renderList(allItems);
+    }
+  }catch(e){list.innerHTML='<div style="padding:40px;text-align:center;color:#7878a0">'+esc(e.message)+'</div>'}
+}
+
+function renderCats(){
+  cats.innerHTML='<button class="active">All</button>';
+  catList.forEach(function(id){
+    var b=document.createElement('button');b.textContent=catMap[id];
+    b.addEventListener('click',function(){
+      document.querySelectorAll('#cats button').forEach(function(x){x.classList.remove('active')});
+      b.classList.add('active');currentCat=id;filterList();
+    });
+    cats.appendChild(b);
+  });
+  currentCat='all';
+}
+
+function filterList(){
+  if(currentCat==='all')renderList(allItems);
+  else renderList(allItems.filter(function(c){return String(c.genre_id||'')===String(currentCat)}));
+}
+
+function renderList(items){
+  list.innerHTML='';
+  if(!items||!items.length){list.innerHTML='<div style="padding:40px;text-align:center;color:#7878a0">Nothing here</div>';return}
+  items.forEach(function(ch){
+    var c=document.createElement('div');c.className='ch';
+    var u=ch.cmd||'',f=idF(u);
+    c.innerHTML=(ch.num?'<span class="n">'+esc(ch.num)+'</span>':'')+
+      (ch.logo?'<img src="'+esc(ch.logo)+'" onerror="this.style.display=\'none\'">':'<span style="width:24px;text-align:center">📺</span>')+
+      '<span class="nm">'+esc(ch.name||'Untitled')+'</span>'+
+      '<span class="st'+(f?' on':'')+'">★</span>';
+    c.querySelector('.st').addEventListener('click',function(e){
+      e.stopPropagation();tgF(u);this.classList.toggle('on');
+    });
+    c.addEventListener('click',function(){playCh(ch)});
+    list.appendChild(c);
+  });
+}
+
+async function playCh(ch){
+  selCh=ch;currentMode='tv';
+  if(mpegtsPlayer){mpegtsPlayer.destroy();mpegtsPlayer=null}
+  vid.pause();vid.removeAttribute('src');vid.load();
+  err.classList.remove('show');
+  player.classList.add('show');
+  load.classList.remove('hidden');
+
+  var cmd=ch.cmd||'',url=cmd;
+  if(client&&client.createLink){try{url=await client.createLink(cmd)}catch(e){}}
+  var proxied=pUrl(url);
+  vlc.textContent='';vlc._url=url;
+
+  var tryTs=isTS(url)||isTS(proxied);
+  var mOk=typeof mpegts!=='undefined'&&mpegts.isSupported&&mpegts.isSupported();
+
+  if(tryTs&&mOk){
+    try{
+      mpegtsPlayer=mpegts.createPlayer({type:'mpegts',isLive:true,url:proxied});
+      mpegtsPlayer.attachMediaElement(vid);
+      mpegtsPlayer.load();
+      mpegtsPlayer.play().catch(function(){});
+      mpegtsPlayer.on(mpegts.Events.ERROR,function(){
+        errMsg.textContent='Stream error';
+        vlc.textContent='📋 Copy URL';
+        err.classList.add('show');
+      });
+      load.classList.add('hidden');
+    }catch(e){load.classList.add('hidden');nativePlay(proxied,url)}
+  }else{
+    nativePlay(proxied,url);
+  }
+}
+
+function nativePlay(src,raw){
+  vid.src=src;
+  vid.play().catch(function(e){
+    errMsg.textContent='Playback failed: '+e.message;
+    vlc.textContent='📋 Copy URL: '+(raw||src);
+    vlc._url=raw||src;
+    err.classList.add('show');
+  });
+  setTimeout(function(){load.classList.add('hidden')},3000);
+}
+
+vid.addEventListener('play',function(){load.classList.add('hidden')});
+vid.addEventListener('waiting',function(){load.classList.remove('hidden')});
+
+back.addEventListener('click',function(){
+  player.classList.remove('show');
+  if(mpegtsPlayer){mpegtsPlayer.destroy();mpegtsPlayer=null}
+  vid.pause();vid.removeAttribute('src');vid.load();
+});
+
+vlc.addEventListener('click',function(){
+  var u=vlc._url||'';
+  if(u)navigator.clipboard.writeText(u).then(function(){vlc.textContent='✓ Copied!'});
+});
+
+info.addEventListener('click',function(){
+  var n=selCh?selCh.name:'';
+  if(n)alert('Channel: '+n);
+});
+
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape'&&player.classList.contains('show'))back.click();
+});
+
+search.addEventListener('input',function(){
+  var q=search.value.toLowerCase();
+  renderList(allItems.filter(function(c){return(c.name||'').toLowerCase().indexOf(q)!==-1}));
+});
+</script>
+</body>
+</html>

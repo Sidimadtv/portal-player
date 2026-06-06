@@ -1,0 +1,14 @@
+Server on port 3000
+[proxy] START url=http://dragoniptv.de:80/play/live.php?mac=00:1A:79:44:6F:E9&stream=20691&extension=ts&play_token=Zu1
+[proxy] FETCH depth=0 host=dragoniptv.de path=/play/live.php?mac=00:1A:79:44:6F:E9&stream=20691&extension=ts&play_token=Zu1PA6
+[proxy] RESPONSE status=302 type=text/html; charset=UTF-8
+[proxy] REDIRECT to http://45.88.0.171:80/live/play/UzBSeFIxcENhRWsyTkRSdWJrMHpjRFpUZEdscGIza3hkR1ZS
+[proxy] FETCH depth=1 host=45.88.0.171 path=/live/play/UzBSeFIxcENhRWsyTkRSdWJrMHpjRFpUZEdscGIza3hkR1ZSWjBWaFdVNTROMWgyTm1ob
+[proxy] RESPONSE status=200 type=video/mp2t
+[proxy] START url=http://dragoniptv.de:80/play/live.php?mac=00:1A:79:44:6F:E9&stream=105817&extension=ts&play_token=ta
+[proxy] FETCH depth=0 host=dragoniptv.de path=/play/live.php?mac=00:1A:79:44:6F:E9&stream=105817&extension=ts&play_token=tabdJ
+[proxy] RESPONSE status=302 type=text/html; charset=UTF-8
+[proxy] REDIRECT to http://45.88.0.171:80/live/play/ZUhkSmJtZEZPV2xGUjBGQ1MyNU1NMWxPUm1GNmQzaHVhWEUz
+[proxy] FETCH depth=1 host=45.88.0.171 path=/live/play/ZUhkSmJtZEZPV2xGUjBGQ1MyNU1NMWxPUm1GNmQzaHVhWEUzVFZaTGFXVmtZbGxwZVhJM
+[proxy] RESPONSE status=200 type=video/mp2t
+[proxy] TIMEOUT

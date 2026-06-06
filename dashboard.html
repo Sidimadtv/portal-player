@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Stellar | IPTV Dashboard</title>
+<link rel="icon" href="data:,">
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+<script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.min.js"></script>
+<style>
+:root {
+    --bg: #0b0b0f;
+    --surface: #14141a;
+    --surface2: #1c1c24;
+    --surface3: #252530;
+    --border: #2a2a36;
+    --text: #e8e8f0;
+    --text2: #8888a0;
+    --accent: #00d4a0;
+    --accent2: #0ab;
+    --red: #f55;
+    --radius: 10px;
+    --shadow: 0 4px 20px rgba(0,0,0,.5);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, -apple-system, sans-serif; overflow: hidden; }
+a { color: var(--accent); text-decoration: none; }
+input, button { font: inherit; }
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+/* ─── Screen system ─── */
+.screen { position: fixed; inset: 0; display: none; flex-direction: column; z-index: 1; }
+.screen.active { display: flex; }
+.hidden { display: none !important; }
+
+/* ─── Login ─── */
+#login-screen { align-items: center; justify-content: center; background: radial-gradient(ellipse at 30% 20%, #0d2a20, var(--bg) 70%); padding: 20px; }
+.login-box { width: 100%; max-width: 400px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 32px 28px; box-shadow: var(--shadow); }
+.login-box h1 { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
+.login-box p { color: var(--text2); font-size: 13px; margin-bottom: 20px; }
+.lg-tabs { display: flex; gap: 4px; margin-bottom: 16px; background: var(--surface2); border-radius: 8px; padding: 3px; }
+.lg-tabs button { flex: 1; padding: 8px; border: none; border-radius: 6px; background: transparent; color: var(--text2); cursor: pointer; font-size: 13px; font-weight: 500; transition: .15s; }
+.lg-tabs button.active { background: var(--accent); color: #000; }
+.lg-form { display: flex; flex-direction: column; gap: 10px; }
+.lg-form input { padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface2); color: var(--text); outline: none; transition: border .2s; }
+.lg-form input:focus { border-color: var(--accent); }
+.lg-form button { padding: 10px; border: none; border-radius: 8px; background: var(--accent); color: #000; font-weight: 600; cursor: pointer; transition: opacity .2s; margin-top: 4px; }
+.lg-form button:hover { opacity: .85; }
+.lg-form button:disabled { opacity: .4; cursor: default; }
+#status-msg { margin-top: 12px; font-size: 13px; text-align: center; min-height: 20px; }
+#saved-list { margin-top: 16px; }
+#saved-list .sl-label { font-size: 12px; color: var(--text2); margin-bottom: 6px; }
+#saved-list .sl-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface2); border-radius: 8px; margin-bottom: 4px; cursor: pointer; transition: background .15s; }
+#saved-list .sl-item:hover { background: var(--surface3); }
+#saved-list .sl-item .sl-del { margin-left: auto; color: var(--red); cursor: pointer; font-size: 16px; padding: 0 4px; }
+
+/* ─── Main layout ─── */
+#main-screen { flex-direction: row; }
+.sidebar { width: 64px; min-width: 64px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; padding: 12px 0; gap: 2px; z-index: 5; }
+.sidebar .s-logo { font-size: 20px; font-weight: 800; color: var(--accent); margin-bottom: 16px; }
+.sidebar button { width: 44px; height: 44px; border: none; border-radius: 10px; background: transparent; color: var(--text2); cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 18px; transition: .15s; }
+.sidebar button:hover { color: var(--text); background: var(--surface2); }
+.sidebar button.active { color: #000; background: var(--accent); }
+.sidebar button span { font-size: 9px; font-weight: 500; }
+
+.main-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.topbar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.topbar h2 { font-size: 16px; font-weight: 600; flex-shrink: 0; }
+.topbar input { flex: 1; max-width: 280px; padding: 7px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface2); color: var(--text); outline: none; font-size: 13px; }
+.topbar input:focus { border-color: var(--accent); }
+
+.cat-bar { display: flex; gap: 4px; padding: 8px 16px; overflow-x: auto; flex-shrink: 0; background: var(--surface); border-bottom: 1px solid var(--border); }
+.cat-bar::-webkit-scrollbar { height: 0; }
+.cat-bar button { padding: 5px 14px; border: 1px solid var(--border); border-radius: 20px; background: transparent; color: var(--text2); cursor: pointer; font-size: 12px; white-space: nowrap; transition: .15s; flex-shrink: 0; }
+.cat-bar button:hover { border-color: var(--accent); color: var(--text); }
+.cat-bar button.active { background: var(--accent); color: #000; border-color: var(--accent); }
+
+.body-area { flex: 1; display: flex; overflow: hidden; }
+.list-area { width: 45%; min-width: 260px; overflow-y: auto; border-right: 1px solid var(--border); padding: 4px; }
+.preview-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+/* ─── Cards ─── */
+.card-list { display: flex; flex-direction: column; gap: 2px; }
+.card { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; cursor: pointer; transition: background .15s; }
+.card:hover { background: var(--surface2); }
+.card.selected { background: var(--accent); color: #000; }
+.card.selected .card-num { color: rgba(0,0,0,.5); }
+.card.selected .card-fav { color: rgba(0,0,0,.4); }
+.card .card-num { color: var(--text2); font-size: 11px; min-width: 28px; font-weight: 500; }
+.card img { width: 32px; height: 32px; object-fit: contain; border-radius: 4px; flex-shrink: 0; background: var(--surface2); }
+.card .card-name { flex: 1; font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .card-fav { color: var(--text2); cursor: pointer; font-size: 18px; padding: 2px 4px; transition: .2s; }
+.card .card-fav.on { color: #f0b400; }
+
+/* ─── Preview ─── */
+.preview-wrap { flex: 1; background: #000; position: relative; display: flex; align-items: center; justify-content: center; min-height: 180px; }
+.preview-wrap video { width: 100%; height: 100%; object-fit: contain; }
+.preview-wrap .pv-btn { position: absolute; bottom: 10px; right: 10px; z-index: 5; background: rgba(0,0,0,.6); color: #fff; border: none; border-radius: 8px; padding: 6px 14px; font-size: 16px; cursor: pointer; opacity: .7; transition: .2s; }
+.preview-wrap .pv-btn:hover { opacity: 1; }
+.preview-info { padding: 10px 14px; background: var(--surface); flex-shrink: 0; }
+.preview-info .pi-title { font-weight: 600; font-size: 14px; }
+.preview-info .pi-desc { color: var(--text2); font-size: 12px; margin-top: 2px; }
+
+/* ─── Player Overlay ─── */
+#player-overlay { position: fixed; inset: 0; z-index: 100; background: #000; display: none; flex-direction: column; }
+#player-overlay.active { display: flex; }
+#player-overlay video { width: 100%; height: 100%; object-fit: contain; flex: 1; }
+#player-overlay .pl-top { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; padding: 10px 14px; background: linear-gradient(#0008, transparent); z-index: 5; }
+#player-overlay .pl-top button { background: none; border: none; color: #fff; font-size: 22px; cursor: pointer; padding: 4px; }
+#player-overlay .pl-bot { position: absolute; bottom: 0; left: 0; right: 0; padding: 12px 14px 20px; background: linear-gradient(transparent, #000c); z-index: 5; display: flex; align-items: center; gap: 10px; }
+#player-overlay .pl-bot button { background: none; border: none; color: #fff; font-size: 22px; cursor: pointer; padding: 4px 8px; }
+#player-overlay .pl-bot .pl-vlc { font-size: 12px; color: var(--accent); cursor: pointer; text-decoration: underline; margin-left: auto; }
+#player-overlay .pl-load { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 3; }
+#player-overlay .pl-err { position: absolute; bottom: 70px; left: 20px; right: 20px; background: rgba(0,0,0,.85); border-radius: 10px; padding: 12px 16px; text-align: center; z-index: 6; font-size: 13px; color: var(--red); }
+#player-overlay .pl-err .pl-raw { color: var(--text2); font-size: 11px; word-break: break-all; margin-top: 6px; }
+#player-overlay .pl-err button { margin-top: 8px; padding: 6px 20px; border: none; border-radius: 6px; background: var(--accent); color: #000; cursor: pointer; font-weight: 600; }
+
+.spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── EPG / Info Banner ─── */
+#epg-banner { position: absolute; top: 50px; left: 16px; right: 16px; padding: 10px 14px; background: rgba(0,0,0,.88); border-radius: 10px; display: flex; align-items: center; gap: 10px; z-index: 4; transition: opacity .3s; pointer-events: none; }
+#epg-banner.hide-banner { opacity: 0; }
+#epg-banner img { width: 40px; height: 40px; object-fit: contain; border-radius: 4px; }
+#epg-banner .eb-name { font-weight: 600; font-size: 15px; }
+#epg-banner .eb-prog { color: var(--text2); font-size: 12px; }
+
+/* ─── Empty state ─── */
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text2); gap: 8px; text-align: center; padding: 20px; }
+.empty-state .es-icon { font-size: 40px; opacity: .3; }
+
+/* ─── Responsive ─── */
+@media (max-width: 768px) {
+    .sidebar { width: 100%; min-width: unset; flex-direction: row; padding: 6px 10px; border-right: none; border-top: 1px solid var(--border); order: 1; }
+    #main-screen { flex-direction: column; }
+    .sidebar button { width: 40px; height: 40px; font-size: 16px; }
+    .sidebar .s-logo { display: none; }
+    .body-area { flex-direction: column; }
+    .list-area { width: 100%; min-width: unset; max-height: 50%; border-right: none; border-bottom: 1px solid var(--border); }
+    .preview-wrap { min-height: 140px; }
+    .topbar input { max-width: 180px; }
+    .cat-bar { padding: 6px 10px; }
+    .cat-bar button { font-size: 11px; padding: 4px 10px; }
+}
+
+@media (max-width: 480px) {
+    .topbar h2 { font-size: 14px; }
+    .card { padding: 6px 10px; }
+    .card .card-name { font-size: 12px; }
+    .login-box { padding: 20px 16px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══ LOGIN ═══ -->
+<div id="login-screen" class="screen active">
+    <div class="login-box">
+        <h1>✦ Stellar</h1>
+        <p>Connect your IPTV portal</p>
+        <div class="lg-tabs">
+            <button class="active" data-lgtab="stalker">Stalker</button>
+            <button data-lgtab="xtream">Xtream</button>
+        </div>
+        <form id="login-form" class="lg-form">
+            <div id="lg-stalker">
+                <input type="url" id="portal-url" placeholder="Portal URL">
+                <input type="text" id="mac-addr" placeholder="MAC Address (00:1A:79:XX:XX:XX)">
+            </div>
+            <div id="lg-xtream" class="hidden">
+                <input type="url" id="xtream-url" placeholder="Xtream Server URL">
+                <input type="text" id="xtream-user" placeholder="Username">
+                <input type="password" id="xtream-pass" placeholder="Password">
+            </div>
+            <button type="submit" id="connect-btn">Connect</button>
+        </form>
+        <div id="status-msg"></div>
+        <div id="saved-list"></div>
+    </div>
+</div>
+
+<!-- ═══ MAIN ═══ -->
+<div id="main-screen" class="screen">
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="s-logo">✦</div>
+        <button class="active" data-mode="tv" title="TV">📺<span>TV</span></button>
+        <button data-mode="series" title="Series">🎬<span>Series</span></button>
+        <button data-mode="movies" title="Movies">🎞<span>Movies</span></button>
+        <button data-mode="fav" title="Favorites">★<span>Fav</span></button>
+        <button data-mode="logout" title="Switch Portal" style="margin-top:auto;">⚙<span>Switch</span></button>
+    </div>
+
+    <!-- Main area -->
+    <div class="main-area">
+        <div class="topbar">
+            <h2 id="top-title">Channels</h2>
+            <input type="text" id="search-input" placeholder="Search...">
+        </div>
+        <div id="cat-bar" class="cat-bar"></div>
+        <div class="body-area">
+            <div class="list-area" id="list-area"><div class="empty-state"><div class="es-icon">📺</div><div>Connect to a portal to browse channels</div></div></div>
+            <div class="preview-area">
+                <div class="preview-wrap">
+                    <video id="pv-player" muted playsinline></video>
+                    <button id="pv-fs-btn" class="pv-btn hidden">⛶</button>
+                </div>
+                <div class="preview-info">
+                    <div class="pi-title" id="pv-title">Select a channel</div>
+                    <div class="pi-desc" id="pv-desc">Preview will appear here</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ PLAYER OVERLAY ═══ -->
+<div id="player-overlay">
+    <video id="pl-video" autoplay playsinline></video>
+    <div class="pl-top">
+        <button id="pl-back">✕</button>
+        <span style="color:#fff;font-size:13px;font-weight:500;" id="pl-ch-name"></span>
+        <button id="pl-info-btn">ℹ</button>
+    </div>
+    <div class="pl-bot">
+        <button id="pl-play">⏸</button>
+        <button id="pl-ff">⏭</button>
+        <span id="pl-vlc-link" class="pl-vlc hidden">📋 Copy VLC URL</span>
+    </div>
+    <div class="pl-load hidden"><div class="spinner"></div></div>
+    <div id="pl-error" class="pl-err hidden"></div>
+    <div id="epg-banner" class="hide-banner">
+        <img id="eb-logo" src="" alt="">
+        <div><div class="eb-name" id="eb-name"></div><div class="eb-prog" id="eb-prog"></div></div>
+    </div>
+</div>
+
+<script src="js/stalker.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════════
+// Dashboard – Stellar
+// ═══════════════════════════════════════════════════════════════
+
+// Global error logger
+window.onerror = function(msg, src, line, col, err) {
+    console.error('GLOBAL ERROR:', msg, src, line, col, err);
+    var el = document.getElementById('status-msg');
+    if (el) el.textContent = '⚠ Error: ' + (err ? err.message : msg);
+};
+document.addEventListener('DOMContentLoaded', function() {
+    var $ = function(id) { return document.getElementById(id); };
+    var q = function(s, p) { return (p || document).querySelector(s); };
+    var qa = function(s, p) { return (p || document).querySelectorAll(s); };
+
+    // ── UI refs ──
+    var ui = {
+        loginScreen: $('login-screen'),
+        mainScreen: $('main-screen'),
+        playerOverlay: $('player-overlay'),
+        portalUrl: $('portal-url'), macAddr: $('mac-addr'),
+        xtreamUrl: $('xtream-url'), xtreamUser: $('xtream-user'), xtreamPass: $('xtream-pass'),
+        loginForm: $('login-form'), connectBtn: $('connect-btn'),
+        statusMsg: $('status-msg'), savedList: $('saved-list'),
+        lgStalker: $('lg-stalker'), lgXtream: $('lg-xtream'),
+        topTitle: $('top-title'), searchInput: $('search-input'),
+        catBar: $('cat-bar'), listArea: $('list-area'),
+        pvPlayer: $('pv-player'), pvFsBtn: $('pv-fs-btn'),
+        pvTitle: $('pv-title'), pvDesc: $('pv-desc'),
+        plVideo: $('pl-video'), plBack: $('pl-back'),
+        plPlay: $('pl-play'), plFf: $('pl-ff'),
+        plVlc: $('pl-vlc-link'), plLoad: $('pl-load'),
+        plError: $('pl-error'), plChName: $('pl-ch-name'),
+        plInfoBtn: $('pl-info-btn'),
+        ebName: $('eb-name'), ebProg: $('eb-prog'), ebLogo: $('eb-logo'),
+        epgBanner: $('epg-banner'),
+    };
+
+    // ── State ──
+    var client = null;
+    var xtream = { mode: false, base: '', user: '', pass: '', cats: {}, liveMap: [], vodMap: [], seriesMap: [] };
+    var currentMode = 'tv';
+    var allItems = [];
+    var currentCat = 'all';
+    var catMap = {};
+    var catList = [];
+    var selectedCh = null;
+    var pvMpegts = null, pvHls = null;
+    var plMpegts = null, plHls = null;
+
+    // ── Helpers ──
+    function showScreen(id) {
+        qa('.screen').forEach(function(s) { s.classList.remove('active'); });
+        $(id).classList.add('active');
+    }
+
+    function escapeHtml(s) {
+        if (typeof s !== 'string') return '';
+        var d = document.createElement('div'); d.textContent = s; return d.innerHTML;
+    }
+
+    function proxiedUrl(url) {
+        var host = location.host;
+        var same = url.indexOf(location.protocol + '//' + host) === 0 || url.indexOf('//' + host) === 0;
+        if (same) return url;
+        var base = location.hostname.indexOf('vercel') !== -1 ? '/api/stalker/stream-get' : 'https://stalker-p.vercel.app/api/stalker/stream-get';
+        var tok = (client && client.token) || '';
+        return base + '?url=' + encodeURIComponent(url) + (tok ? '&token=' + encodeURIComponent(tok) : '');
+    }
+
+    function isTS(url) { return /\.ts\b|extension=ts|\.m2ts/i.test(url); }
+    function isM3U(url) { return /\.m3u8/i.test(url); }
+    function cleanUrl(url) { return url.replace(/play_token=[^&]+/g, 'play_token=***').replace(/token=[^&]+/g, 'token=***'); }
+
+    // ── Favorites ──
+    function getFavs() { try { return JSON.parse(localStorage.getItem('st_fav') || '[]'); } catch(e) { return []; } }
+    function setFavs(a) { localStorage.setItem('st_fav', JSON.stringify(a)); }
+    function isFav(url) { return getFavs().indexOf(url) !== -1; }
+    function toggleFav(url) { var a = getFavs(), i = a.indexOf(url); if (i===-1) a.push(url); else a.splice(i,1); setFavs(a); return a.indexOf(url)!==-1; }
+
+    // ── Saved portals ──
+    function getPortals() { try { return JSON.parse(localStorage.getItem('st_ports') || '[]'); } catch(e) { return []; } }
+function savePortal(p) {
+    var list = getPortals();
+    var found = false;
+    for (var i = 0; i < list.length; i++) {
+        if (list[i].type === p.type && list[i].url === p.url && ((p.type==='stalker' && list[i].mac===p.mac) || (p.type==='xtream' && list[i].user===p.user))) {
+            list[i] = p; found = true; break;
+        }
+    }
+    if (!found) list.push(p);
+    localStorage.setItem('st_ports', JSON.stringify(list));
+    renderSaved();
+}
+    function delPortal(i) { var list = getPortals(); list.splice(i,1); localStorage.setItem('st_ports', JSON.stringify(list)); renderSaved(); }
+
+    function renderSaved() {
+        var list = getPortals();
+        ui.savedList.innerHTML = '';
+        if (!list.length) return;
+        var label = document.createElement('div');
+        label.className = 'sl-label'; label.textContent = 'Saved portals';
+    ui.savedList.appendChild(label);
+    list.forEach(function(p, idx) {
+        var item = document.createElement('div');
+        item.className = 'sl-item';
+        var icon = p.type === 'stalker' ? '🔑' : '🌐';
+        var label2 = (p.type === 'stalker' ? p.url.replace(/https?:\/\//,'').substring(0,30) : (p.user || '') + '@' + (p.url ? p.url.replace(/https?:\/\//,'').substring(0,20) : ''));
+        var del = document.createElement('span');
+        del.className = 'sl-del';
+        del.textContent = '✕';
+        del.addEventListener('click', function(e) { e.stopPropagation(); delPortal(idx); });
+        item.innerHTML = '<span>' + icon + '</span><span style="flex:1;font-size:13px;">' + escapeHtml(label2) + '</span>';
+        item.appendChild(del);
+        item.addEventListener('click', function() { connectSaved(p); });
+        ui.savedList.appendChild(item);
+    });
+    }
+
+    function connectSaved(p) {
+        if (p.type === 'stalker') {
+            ui.portalUrl.value = p.url; ui.macAddr.value = p.mac;
+            doConnect(p.url, p.mac, '', '', 'stalker');
+        } else {
+            doConnect(p.url, '', p.user, p.pass, 'xtream');
+        }
+    }
+
+    // ── Login tabs ──
+    function setLoginTab(t) {
+        console.log('[Login] set tab:', t);
+        ui.lgStalker.classList.toggle('hidden', t !== 'stalker');
+        ui.lgXtream.classList.toggle('hidden', t !== 'xtream');
+        qa('input', ui.lgStalker).forEach(function(inp) { inp.disabled = t !== 'stalker'; });
+        qa('input', ui.lgXtream).forEach(function(inp) { inp.disabled = t !== 'xtream'; });
+    }
+    // Init default tab
+    setLoginTab('stalker');
+    qa('[data-lgtab]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            qa('[data-lgtab]').forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            setLoginTab(btn.getAttribute('data-lgtab'));
+        });
+    });
+
+    // ── Connect ──
+    ui.loginForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        console.log('[Login] form submitted');
+        try {
+            var activeTab = q('[data-lgtab].active').getAttribute('data-lgtab');
+            console.log('[Login] active tab:', activeTab);
+            if (activeTab === 'stalker') {
+                var portal = ui.portalUrl.value.trim();
+                var mac = ui.macAddr.value.trim().toUpperCase().replace(/[^A-F0-9]/g,'');
+                if (mac.length === 12) mac = mac.match(/.{2}/g).join(':');
+                console.log('[Login] portal:', portal, 'mac:', mac);
+                if (!portal || !/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(mac)) { setStatus('Valid Portal URL and MAC required', true); return; }
+                savePortal({ type: 'stalker', url: portal, mac: mac });
+                doConnect(portal, mac, '', '', 'stalker');
+            } else {
+                var xurl = ui.xtreamUrl.value.trim();
+                var xuser = ui.xtreamUser.value.trim();
+                var xpass = ui.xtreamPass.value.trim();
+                console.log('[Login] xtream url:', xurl, 'user:', xuser);
+                if (!xurl || !xuser) { setStatus('All Xtream fields required', true); return; }
+                savePortal({ type: 'xtream', url: xurl, user: xuser, pass: xpass });
+                doConnect(xurl, '', xuser, xpass, 'xtream');
+            }
+        } catch(ex) {
+            console.error('[Login] submit error:', ex);
+            setStatus('✗ ' + ex.message, true);
+        }
+    });
+
+    function setStatus(msg, err) {
+        console.log('[Status]', msg, err ? '(error)' : '');
+        ui.statusMsg.textContent = msg;
+        ui.statusMsg.style.color = err ? '#f55' : '#00d4a0';
+    }
+
+    async function doConnect(portal, mac, user, pass, type) {
+        ui.connectBtn.disabled = true;
+        ui.connectBtn.textContent = 'Connecting...';
+        setStatus('Connecting...');
+        try {
+            console.log('[Connect] type:', type, 'portal:', portal);
+            if (type === 'stalker') {
+                client = new StalkerClient(portal, mac);
+                console.log('[Connect] authenticating...');
+                var authResult = await client.authenticate(user, pass);
+                console.log('[Connect] auth result:', authResult);
+                if (!client.token) throw new Error('No token after handshake');
+            } else {
+                // Xtream Codes API (through proxy to avoid CORS)
+                xtream.mode = true;
+                xtream.base = portal.replace(/\/+$/,'');
+                xtream.user = user;
+                xtream.pass = pass;
+                // Test connection via proxy
+                var testUrl = xtream.base + '/player_api.php?username=' + encodeURIComponent(user) + '&password=' + encodeURIComponent(pass);
+                var proxyPre = location.hostname.indexOf('vercel') !== -1 ? '' : 'https://stalker-p.vercel.app';
+                console.log('[Xtream] testing:', testUrl);
+                var testResp = await fetch(proxyPre + '/api/stalker/proxy?url=' + encodeURIComponent(testUrl));
+                if (!testResp.ok) throw new Error('Proxy error: ' + testResp.status);
+                var testData = await testResp.json();
+                console.log('[Xtream] response:', testData);
+                if (!testData || !testData.user_info) throw new Error('Invalid Xtream credentials (no user_info)');
+                if (!testData.user_info.auth) throw new Error('Xtream auth rejected (auth=0)');
+                client = { token: 'xtream', xtreamMode: true, createLink: function(cmd) { return Promise.resolve(cmd); } };
+            }
+            setStatus('Connected!');
+            showScreen('main-screen');
+            switchMode('tv');
+        } catch(e) {
+            setStatus('✗ ' + e.message, true);
+            console.error(e);
+        }
+        ui.connectBtn.disabled = false;
+        ui.connectBtn.textContent = 'Connect';
+    }
+
+    // ── Sidebar mode switching ──
+    qa('.sidebar button[data-mode]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var mode = btn.getAttribute('data-mode');
+            if (mode === 'logout') {
+                destroyPlayer();
+                showScreen('login-screen');
+                renderSaved();
+                return;
+            }
+            switchMode(mode);
+        });
+    });
+
+    async function switchMode(mode) {
+        currentMode = mode;
+        qa('.sidebar button[data-mode]').forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-mode') === mode); });
+        selectedCh = null;
+        destroyPreview();
+        ui.listArea.innerHTML = '';
+        ui.catBar.innerHTML = '';
+        ui.pvTitle.textContent = 'Select ' + mode;
+        ui.pvDesc.textContent = '';
+        ui.pvFsBtn.classList.add('hidden');
+        ui.topTitle.textContent = {tv:'TV Channels',series:'Series',movies:'Movies',fav:'Favorites'}[mode] || 'Channels';
+        ui.searchInput.value = '';
+
+        if (mode === 'fav') {
+            ui.catBar.innerHTML = '<button class="active">All</button>';
+            loadFavs();
+            return;
+        }
+        if (!client && !xtream.mode) return;
+
+        try {
+            if (xtream.mode) {
+                await loadXtream(mode);
+                return;
+            }
+            if (mode === 'tv') {
+                var genres = await client.getGenres();
+                catMap = {}; catList = [];
+                genres.forEach(function(g) { catMap[g.id] = g.title; catList.push(g.id); });
+                catList.sort(function(a,b) { return (catMap[a]||'').localeCompare(catMap[b]||''); });
+                renderCats();
+                var channels = await client.getChannels();
+                allItems = channels.map(function(ch) {
+                    return { name: ch.name, cmd: ch.url, num: ch.number, logo: ch.logo || '', genre_id: String(ch.genre_id || '') };
+                });
+                renderList(allItems);
+            } else {
+                var type = mode === 'series' ? 'series' : 'vod';
+                var genres = await client.getVodCategories(type);
+                catMap = {}; catList = [];
+                genres.forEach(function(g) { catMap[g.id] = g.title; catList.push(g.id); });
+                catList.sort(function(a,b) { return (catMap[a]||'').localeCompare(catMap[b]||''); });
+                renderCats();
+                var items = await client.getVodList('all', type);
+                allItems = items.map(function(m) {
+                    return { name: m.name, cmd: m.url, num: m.number || '', logo: m.logo || '', genre_id: String(m.genre_id || m.category_id || '') };
+                });
+                renderList(allItems);
+            }
+        } catch(e) {
+            console.error('Load error:', e);
+            ui.listArea.innerHTML = '<div class="empty-state"><div class="es-icon">⚠</div><div>' + escapeHtml(e.message) + '</div></div>';
+        }
+    }
+
+    // ── Xtream loader ──
+    async function loadXtream(mode) {
+        ui.loadingMsg && (ui.loadingMsg.textContent = 'Loading...');
+        var actionMap = { tv: 'get_live_streams', series: 'get_series', movies: 'get_vod_streams' };
+        var catActionMap = { tv: 'live_categories', series: 'series_categories', movies: 'vod_categories' };
+        var action = actionMap[mode] || 'get_live_streams';
+        var catAction = catActionMap[mode] || 'live_categories';
+
+        async function xtFetch(act) {
+            var u = xtream.base + '/player_api.php?username=' + encodeURIComponent(xtream.user) + '&password=' + encodeURIComponent(xtream.pass) + '&action=' + act;
+            var proxyPre = location.hostname.indexOf('vercel') !== -1 ? '' : 'https://stalker-p.vercel.app';
+            var r = await fetch(proxyPre + '/api/stalker/proxy?url=' + encodeURIComponent(u));
+            return r.json();
+        }
+
+        try {
+            var catData = await xtFetch(catAction);
+            var cats = Array.isArray(catData) ? catData : [];
+            catMap = {}; catList = [];
+            cats.forEach(function(c) { var id = String(c.category_id || c.id); catMap[id] = c.category_name || c.name || ''; catList.push(id); });
+            catList.sort(function(a,b) { return (catMap[a]||'').localeCompare(catMap[b]||''); });
+            renderCats();
+
+            var streamData = await xtFetch(action);
+            var streams = Array.isArray(streamData) ? streamData : [];
+            allItems = streams.map(function(s) {
+                var sid = s.stream_id || s.id || '';
+                var ext = mode === 'movies' ? '.mp4' : '.ts';
+                var streamUrl = xtream.base + '/' + (mode === 'tv' ? 'live' : mode === 'series' ? 'series' : 'movie') + '/' + encodeURIComponent(xtream.user) + '/' + encodeURIComponent(xtream.pass) + '/' + sid + ext;
+                return {
+                    name: s.name || s.title || 'Untitled',
+                    cmd: streamUrl,
+                    num: s.num || '',
+                    logo: s.stream_icon || s.cover || '',
+                    genre_id: String(s.category_id || ''),
+                    note: s.epg_channel_id || ''
+                };
+            });
+            renderList(allItems);
+        } catch(e) {
+            ui.listArea.innerHTML = '<div class="empty-state"><div class="es-icon">⚠</div><div>Xtream error: ' + escapeHtml(e.message) + '</div></div>';
+        }
+    }
+
+    function renderCats() {
+        ui.catBar.innerHTML = '<button class="active">All</button>';
+        catList.forEach(function(id) {
+            var btn = document.createElement('button');
+            btn.textContent = catMap[id];
+            btn.addEventListener('click', function() {
+                qa('#cat-bar button').forEach(function(b) { b.classList.remove('active'); });
+                btn.classList.add('active');
+                currentCat = id;
+                filterList();
+                if (currentMode === 'fav') loadFavs();
+            });
+            ui.catBar.appendChild(btn);
+        });
+        currentCat = 'all';
+    }
+
+    function filterList() {
+        if (currentCat === 'all') renderList(allItems);
+        else renderList(allItems.filter(function(ch) { return String(ch.genre_id || '') === String(currentCat); }));
+    }
+
+    function renderList(items) {
+        ui.listArea.innerHTML = '';
+        if (!items || !items.length) {
+            ui.listArea.innerHTML = '<div class="empty-state"><div class="es-icon">📭</div><div>Nothing here</div></div>';
+            return;
+        }
+        var div = document.createElement('div');
+        div.className = 'card-list';
+        items.forEach(function(ch) {
+            var card = document.createElement('div');
+            card.className = 'card';
+            var name = ch.name || 'Untitled';
+            var num = ch.num || '';
+            var logo = ch.logo || '';
+            var url = ch.cmd || '';
+            var fav = isFav(url);
+            card.innerHTML = (num ? '<span class="card-num">' + num + '</span>' : '') +
+                (logo ? '<img src="' + logo + '" alt="" onerror="this.style.display=\'none\'">' : '<span style="width:32px;text-align:center;font-size:16px;">📺</span>') +
+                '<span class="card-name">' + escapeHtml(name) + '</span>' +
+                '<span class="card-fav' + (fav ? ' on' : '') + '">★</span>';
+            card.querySelector('.card-fav').addEventListener('click', function(e) {
+                e.stopPropagation();
+                var now = toggleFav(url);
+                this.classList.toggle('on', now);
+            });
+            card.addEventListener('click', function() {
+                qa('.card').forEach(function(c) { c.classList.remove('selected'); });
+                card.classList.add('selected');
+                selectCh(ch, card);
+            });
+            div.appendChild(card);
+        });
+        ui.listArea.appendChild(div);
+    }
+
+    function loadFavs() {
+        var favs = getFavs();
+        var items = allItems.filter(function(ch) { return favs.indexOf(ch.cmd || '') !== -1; });
+        renderList(items);
+        if (!items.length) {
+            ui.pvTitle.textContent = 'No favorites yet';
+            ui.pvDesc.textContent = 'Click ★ on any channel to add it';
+        }
+    }
+
+    // ── Search ──
+    ui.searchInput.addEventListener('input', function() {
+        var q = ui.searchInput.value.toLowerCase();
+        var filtered;
+        if (currentMode === 'fav') {
+            var favs = getFavs();
+            filtered = allItems.filter(function(ch) { return favs.indexOf(ch.cmd||'') !== -1 && (ch.name||'').toLowerCase().indexOf(q) !== -1; });
+        } else if (currentCat === 'all') {
+            filtered = allItems.filter(function(ch) { return (ch.name||'').toLowerCase().indexOf(q) !== -1; });
+        } else {
+            filtered = allItems.filter(function(ch) { return String(ch.genre_id||'') === String(currentCat) && (ch.name||'').toLowerCase().indexOf(q) !== -1; });
+        }
+        renderList(filtered);
+    });
+
+    // ── Select / Preview ──
+    function selectCh(ch) {
+        selectedCh = ch;
+        ui.pvTitle.textContent = ch.name || '';
+        ui.pvDesc.textContent = ch.note || '';
+        ui.pvFsBtn.classList.remove('hidden');
+        playPreview(ch.cmd || '');
+    }
+
+    ui.pvFsBtn.addEventListener('click', function() {
+        if (selectedCh) goFullscreen(selectedCh.cmd || '');
+    });
+
+    function destroyPreview() {
+        if (pvHls) { pvHls.destroy(); pvHls = null; }
+        if (pvMpegts) { pvMpegts.destroy(); pvMpegts = null; }
+        ui.pvPlayer.pause();
+        ui.pvPlayer.src = '';
+        ui.pvFsBtn.classList.add('hidden');
+    }
+
+    async function playPreview(cmd) {
+        destroyPreview();
+        if (!cmd || !client) return;
+        try {
+            var url = await client.createLink(cmd);
+            var pUrl = proxiedUrl(url);
+            ui.pvPlayer.muted = false;
+            ui.pvPlayer.crossOrigin = 'anonymous';
+            var mOk = typeof mpegts !== 'undefined' && mpegts.isSupported && mpegts.isSupported();
+            var hOk = typeof Hls !== 'undefined' && Hls.isSupported();
+            if (isTS(url) && mOk) {
+                pvMpegts = mpegts.createPlayer({type:'mpegts', isLive:true, url:pUrl});
+                pvMpegts.attachMediaElement(ui.pvPlayer);
+                pvMpegts.load();
+                pvMpegts.play().catch(function(){});
+            } else if (isM3U(url) && hOk) {
+                pvHls = new Hls({debug:false});
+                pvHls.loadSource(pUrl);
+                pvHls.attachMedia(ui.pvPlayer);
+                pvHls.on(Hls.Events.MANIFEST_PARSED, function() { ui.pvPlayer.play().catch(function(){}); });
+            } else {
+                ui.pvPlayer.src = pUrl;
+                ui.pvPlayer.play().catch(function(){});
+            }
+        } catch(e) { console.error('Preview error:', e); }
+    }
+
+    // ── Fullscreen Player ──
+    function goFullscreen(cmd) {
+        destroyPreview();
+        if (!cmd || !client) return;
+        showPlayer(cmd);
+    }
+
+    async function showPlayer(cmd) {
+        ui.playerOverlay.classList.add('active');
+        ui.plLoad.classList.remove('hidden');
+        ui.plError.classList.add('hidden');
+        ui.plVideo.src = '';
+        if (plHls) { plHls.destroy(); plHls = null; }
+        if (plMpegts) { plMpegts.destroy(); plMpegts = null; }
+        ui.plChName.textContent = selectedCh ? (selectedCh.name || '') : '';
+        showEpgBanner();
+
+        try {
+            var url = await client.createLink(cmd);
+            var pUrl = proxiedUrl(url);
+            var rawUrl = url;
+            var triedMpegts = false;
+
+            function tryMpegts() {
+                if (triedMpegts) return; triedMpegts = true;
+                if (!isTS(url) || typeof mpegts === 'undefined' || !mpegts.isSupported || !mpegts.isSupported()) { tryNative(); return; }
+                plMpegts = mpegts.createPlayer({type:'mpegts', isLive:true, url:pUrl});
+                plMpegts.attachMediaElement(ui.plVideo);
+                plMpegts.load();
+                plMpegts.play().catch(function(){ tryNative(); });
+                var errOnce = false;
+                plMpegts.on(mpegts.Events.ERROR, function() {
+                    if (errOnce) return; errOnce = true;
+                    if (plMpegts) { plMpegts.destroy(); plMpegts = null; }
+                    tryNative();
+                });
+                ui.plLoad.classList.add('hidden');
+            }
+
+            function tryHls() {
+                if (!isM3U(url) || typeof Hls === 'undefined' || !Hls.isSupported) { tryNative(); return; }
+                plHls = new Hls({debug:false, enableWorker:true, lowLatencyMode:true});
+                plHls.loadSource(pUrl);
+                plHls.attachMedia(ui.plVideo);
+                var hlsErr = false;
+                plHls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    ui.plLoad.classList.add('hidden');
+                    ui.plVideo.play().catch(function(){});
+                });
+                plHls.on(Hls.Events.ERROR, function(ev, data) {
+                    if (hlsErr) return;
+                    if (data.fatal) { hlsErr = true; plHls.destroy(); plHls = null; tryNative(); }
+                });
+                setTimeout(function(){ ui.plLoad.classList.add('hidden'); }, 3000);
+            }
+
+            function tryNative() {
+                ui.plVideo.src = pUrl;
+                ui.plVideo.play().catch(function(e) {
+                    showPlError('Cannot play stream', rawUrl);
+                });
+                ui.plVideo.addEventListener('playing', function() {
+                    ui.plLoad.classList.add('hidden');
+                    hideEpgAfter(4);
+                }, {once:true});
+                ui.plVideo.addEventListener('error', function() {
+                    ui.plLoad.classList.add('hidden');
+                    showPlError('Playback error', rawUrl);
+                }, {once:true});
+                setTimeout(function(){ ui.plLoad.classList.add('hidden'); }, 3000);
+            }
+
+            // Try mpegts first, then hls, then native
+            if (isTS(url)) { tryMpegts(); }
+            else if (isM3U(url)) { tryHls(); }
+            else { tryNative(); }
+
+        } catch(e) {
+            ui.plLoad.classList.add('hidden');
+            showPlError(e.message, '');
+        }
+    }
+
+    function showPlError(msg, rawUrl) {
+        ui.plError.classList.remove('hidden');
+        var displayUrl = rawUrl ? cleanUrl(rawUrl) : '';
+        ui.plError.innerHTML = '<div>' + escapeHtml(msg) + '</div>' +
+            (displayUrl ? '<div class="pl-raw">' + escapeHtml(displayUrl) + '</div>' : '') +
+            '<button onclick="document.getElementById(\'pl-error\').classList.add(\'hidden\')">Dismiss</button>';
+    }
+
+    function destroyPlayer() {
+        if (plHls) { plHls.destroy(); plHls = null; }
+        if (plMpegts) { plMpegts.destroy(); plMpegts = null; }
+        ui.plVideo.pause();
+        ui.plVideo.src = '';
+        ui.playerOverlay.classList.remove('active');
+    }
+
+    // Player controls
+    ui.plBack.addEventListener('click', function() {
+        destroyPlayer();
+        showScreen('main-screen');
+        if (selectedCh) playPreview(selectedCh.cmd || '');
+    });
+
+    ui.plPlay.addEventListener('click', function() {
+        if (ui.plVideo.paused) ui.plVideo.play(); else ui.plVideo.pause();
+        ui.plPlay.textContent = ui.plVideo.paused ? '▶' : '⏸';
+    });
+
+    ui.plVideo.addEventListener('play', function() { ui.plPlay.textContent = '⏸'; });
+    ui.plVideo.addEventListener('pause', function() { ui.plPlay.textContent = '▶'; });
+
+    // Keyboard: Escape to exit player
+    document.addEventListener('keydown', function(e) {
+        if (ui.playerOverlay.classList.contains('active')) {
+            if (e.key === 'Escape') {
+                destroyPlayer();
+                showScreen('main-screen');
+                if (selectedCh) playPreview(selectedCh.cmd || '');
+            }
+        }
+    });
+
+    // ── EPG Banner ──
+    var epgTimer = null;
+    function showEpgBanner() {
+        if (!selectedCh) return;
+        ui.ebName.textContent = selectedCh.name || '';
+        ui.ebProg.textContent = selectedCh.note || '';
+        ui.ebLogo.src = selectedCh.logo || '';
+        ui.ebLogo.onerror = function(){ this.style.display='none'; };
+        ui.ebLogo.style.display = '';
+        ui.epgBanner.classList.remove('hide-banner');
+        if (epgTimer) clearTimeout(epgTimer);
+    }
+    function hideEpgAfter(sec) {
+        if (epgTimer) clearTimeout(epgTimer);
+        epgTimer = setTimeout(function(){ ui.epgBanner.classList.add('hide-banner'); }, sec * 1000);
+    }
+    ui.plInfoBtn.addEventListener('click', function() {
+        if (ui.epgBanner.classList.contains('hide-banner')) showEpgBanner(); else ui.epgBanner.classList.add('hide-banner');
+        hideEpgAfter(4);
+    });
+
+    // ── VLC link copy ──
+    ui.plVlc.addEventListener('click', function() {
+        var url = ui.plVideo.src;
+        if (url) { navigator.clipboard.writeText(url).then(function(){ ui.plVlc.textContent = '✓ Copied!'; setTimeout(function(){ ui.plVlc.textContent = '📋 Copy VLC URL'; }, 2000); }); }
+    });
+
+    // ── Init ──
+    renderSaved();
+    console.log('Stellar ready');
+});
+</script>
+</body>
+</html>
