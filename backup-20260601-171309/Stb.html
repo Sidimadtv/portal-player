@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>STB Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.3.7/shaka-player.compiled.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script src="js/mpegts.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * { scrollbar-width: thin; scrollbar-color: #27272a #09090b; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: #09090b; }
+        ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 4px; }
+        body { background: #000; color: #e0e0e0; margin: 0; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; }
+        .stb-glow { text-shadow: 0 0 10px rgba(59,130,246,.3); }
+        .stb-card { background: linear-gradient(180deg, #1a1a2e 0%, #0f0f1a 100%); border: 1px solid rgba(59,130,246,.15); }
+        .stb-card:hover { border-color: rgba(59,130,246,.4); box-shadow: 0 0 20px rgba(59,130,246,.1); }
+        .stb-input { background: #0a0a14; border: 1px solid #1e293b; color: #e0e0e0; transition: all .2s; }
+        .stb-input:focus { border-color: #3b82f6; box-shadow: 0 0 15px rgba(59,130,246,.15); outline: none; }
+        .stb-input::placeholder { color: #334155; }
+        .stb-btn { background: linear-gradient(135deg, #3b82f6, #2563eb); color: #fff; transition: all .2s; }
+        .stb-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(59,130,246,.3); }
+        .stb-btn:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow: none; }
+        .stb-loader { border: 2px solid #1e293b; border-top: 2px solid #3b82f6; border-radius: 50%; width: 24px; height: 24px; animation: spin .8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .channel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+        @media (max-width: 640px) { .channel-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; } }
+        .stb-header { background: linear-gradient(180deg, #0f0f23 0%, #080812 100%); border-bottom: 1px solid rgba(59,130,246,.1); }
+        .stb-sidebar { background: #080812; border-right: 1px solid rgba(59,130,246,.08); }
+        .stb-cat-btn { background: transparent; border: none; color: #64748b; padding: 10px 14px; text-align: left; width: 100%; cursor: pointer; transition: all .15s; border-radius: 8px; font-size: 13px; }
+        .stb-cat-btn:hover { background: rgba(59,130,246,.08); color: #e0e0e0; }
+        .stb-cat-btn.active { background: rgba(59,130,246,.15); color: #60a5fa; }
+        .scanline { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9999; background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,.03) 2px, rgba(0,0,0,.03) 4px); }
+        .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: rgba(15,15,35,.95); border: 1px solid rgba(59,130,246,.2); padding: 10px 24px; border-radius: 12px; font-size: 13px; z-index: 999; backdrop-filter: blur(12px); transition: all .3s; opacity: 0; pointer-events: none; }
+        .toast.show { opacity: 1; }
+    </style>
+</head>
+<body>
+
+<div class="scanline"></div>
+<div id="toast" class="toast"></div>
+
+<div id="app" class="h-screen w-screen flex flex-col overflow-hidden bg-black">
+    <div id="loginScreen" class="h-full flex flex-col items-center justify-center p-4" style="background: radial-gradient(ellipse at center, #0f0f23 0%, #000 70%);">
+        <div class="w-full max-w-md space-y-6">
+            <div class="text-center space-y-2">
+                <div class="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
+                    <i class="fas fa-tv text-white text-2xl"></i>
+                </div>
+                <h1 class="text-3xl font-bold tracking-tight stb-glow text-white">STB Portal</h1>
+                <p class="text-zinc-600 text-sm">Connect to your Stalker middleware portal</p>
+            </div>
+
+            <form id="portalForm" class="space-y-4">
+                <div class="space-y-1">
+                    <label class="text-xs text-zinc-500 font-medium uppercase tracking-wider">Portal URL</label>
+                    <input id="portalUrl" type="url" class="stb-input w-full rounded-xl px-4 py-3.5 text-sm" placeholder="http://your-portal.com:8080" required>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-xs text-zinc-500 font-medium uppercase tracking-wider">MAC Address</label>
+                    <input id="portalMac" type="text" class="stb-input w-full rounded-xl px-4 py-3.5 text-sm font-mono tracking-wider uppercase" placeholder="00:1A:79:XX:XX:XX" maxlength="17" required>
+                </div>
+                <button id="connectBtn" type="submit" class="stb-btn w-full rounded-xl py-3.5 font-semibold text-sm flex items-center justify-center gap-2">
+                    <i class="fas fa-plug"></i>
+                    <span>Connect to Portal</span>
+                </button>
+            </form>
+
+            <div id="loginError" class="text-red-400 text-xs font-medium text-left whitespace-pre-wrap max-h-40 overflow-y-auto hidden bg-red-900/10 rounded-xl p-3 border border-red-900/20"></div>
+
+            <div id="loginStatus" class="items-center justify-center gap-3 hidden">
+                <div class="stb-loader"></div>
+                <span id="loginStatusText" class="text-blue-400 text-sm">Connecting...</span>
+            </div>
+        </div>
+        <p class="mt-8 text-[10px] text-zinc-800">STB Emulator v2.0</p>
+    </div>
+
+    <div id="mainScreen" class="h-full flex flex-col hidden">
+        <header class="stb-header h-14 flex items-center justify-between px-4 shrink-0">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
+                    <i class="fas fa-tv text-white text-xs"></i>
+                </div>
+                <div>
+                    <span class="text-sm font-bold text-white">STB Portal</span>
+                    <span id="portalName" class="text-[10px] text-zinc-600 ml-2"></span>
+                </div>
+            </div>
+            <div class="flex items-center gap-3">
+                <div class="relative">
+                    <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600 text-xs"></i>
+                    <input id="searchInput" type="text" class="stb-input rounded-lg pl-8 pr-3 py-1.5 text-xs w-40 md:w-56" placeholder="Search channels...">
+                </div>
+                <button id="disconnectBtn" class="text-zinc-600 hover:text-red-400 transition text-sm p-2" title="Disconnect">
+                    <i class="fas fa-power-off"></i>
+                </button>
+            </div>
+        </header>
+
+        <div class="flex flex-1 overflow-hidden">
+            <aside class="stb-sidebar w-48 md:w-56 shrink-0 overflow-y-auto p-3 hidden md:block">
+                <div id="categoryList" class="space-y-1"></div>
+            </aside>
+
+            <div id="mobileCatToggle" class="md:hidden fixed bottom-20 right-4 z-50 hidden">
+                <button onclick="toggleMobileCat()" class="w-12 h-12 rounded-full stb-btn flex items-center justify-center shadow-lg">
+                    <i class="fas fa-list"></i>
+                </button>
+            </div>
+
+            <div id="mobileCatDrawer" class="fixed inset-0 z-50 hidden" style="background: rgba(0,0,0,.6);">
+                <div class="absolute left-0 top-0 bottom-0 w-64 stb-sidebar overflow-y-auto p-4 shadow-2xl">
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Categories</span>
+                        <button onclick="toggleMobileCat()" class="text-zinc-600 hover:text-white"><i class="fas fa-times"></i></button>
+                    </div>
+                    <div id="mobileCategoryList" class="space-y-1"></div>
+                </div>
+            </div>
+
+            <main class="flex-1 overflow-y-auto p-4 md:p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 id="activeCategoryTitle" class="text-sm font-bold text-white tracking-wide">All Channels</h2>
+                    <span id="channelCount" class="text-[11px] text-zinc-600 font-mono"></span>
+                </div>
+                <div id="channelGrid" class="channel-grid"></div>
+                <div id="emptyState" class="hidden flex flex-col items-center justify-center py-20 text-zinc-700">
+                    <i class="fas fa-satellite-dish text-5xl mb-4"></i>
+                    <p class="text-sm">No channels found</p>
+                </div>
+            </main>
+        </div>
+    </div>
+</div>
+
+<dialog id="playerModal" class="fixed inset-0 w-full h-full bg-black p-0 m-0 max-w-none max-h-none" style="background:#000">
+    <div class="flex flex-col h-full">
+        <div class="flex-1 bg-black relative flex items-center justify-center overflow-hidden">
+            <div id="playerInfo" class="absolute top-4 left-4 px-3 py-1 bg-black/70 backdrop-blur-sm rounded-full text-xs text-blue-400 font-mono hidden z-20"></div>
+            <div id="playerContainer" class="w-full h-full flex items-center justify-center"></div>
+            <button onclick="closePlayer()" class="absolute top-4 right-4 w-10 h-10 rounded-full bg-black/50 hover:bg-zinc-800 text-white flex items-center justify-center transition z-20 border border-white/10 backdrop-blur-md">
+                <i class="fas fa-times"></i>
+            </button>
+            <div id="playerError" class="absolute inset-0 flex items-center justify-center bg-black/90 backdrop-blur-sm hidden z-10">
+                <div class="text-center p-8">
+                    <div class="w-16 h-16 mx-auto rounded-full bg-red-900/30 flex items-center justify-center mb-4 text-red-500"><i class="fas fa-exclamation-triangle text-2xl"></i></div>
+                    <h3 class="text-white font-bold text-lg mb-2">Playback Error</h3>
+                    <p id="errorDesc" class="text-zinc-500 text-sm max-w-md"></p>
+                    <button onclick="closePlayer()" class="mt-6 px-6 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm text-white transition">Close</button>
+                </div>
+            </div>
+            <div id="playerLoader" class="absolute inset-0 flex items-center justify-center bg-black/80 hidden z-10">
+                <div class="text-center">
+                    <div class="stb-loader mx-auto mb-3"></div>
+                    <p class="text-blue-400 text-sm">Loading stream...</p>
+                </div>
+            </div>
+        </div>
+        <div class="h-14 bg-zinc-900 border-t border-zinc-800 flex items-center justify-between px-4 shrink-0">
+            <div class="flex items-center gap-3 overflow-hidden">
+                <div id="playerChannelLogo" class="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center overflow-hidden shrink-0 text-white font-bold text-sm"></div>
+                <div class="overflow-hidden">
+                    <h3 id="playerChannelName" class="text-sm font-semibold text-white truncate">Channel</h3>
+                </div>
+            </div>
+            <button onclick="closePlayer()" class="px-5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-xs font-medium transition flex items-center gap-2 border border-zinc-700">
+                <i class="fas fa-reply"></i> Back
+            </button>
+        </div>
+    </div>
+</dialog>
+
+<script>
+var Hls = window.Hls;
+var mpegts = window.mpegts;
+var shaka = window.shaka || window.ShakaPlayer;
+var shakaPlayer = null;
+var hlsInstance = null;
+var mpegtsPlayer = null;
+var portalToken = '';
+var portalBase = '';
+var portalOriginal = '';
+var state = { channels: [], groups: [], activeGroup: 'All', searchQuery: '', mac: '' };
+
+var $ = function(id) { return document.getElementById(id); };
+var show = function(el) { el.classList.remove('hidden'); };
+var hide = function(el) { el.classList.add('hidden'); };
+
+function toast(msg) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(t._hide);
+    t._hide = setTimeout(function() { t.classList.remove('show'); }, 2500);
+}
+
+function formatMac(mac) {
+    mac = mac.replace(/[^a-fA-F0-9]/g, '').toUpperCase();
+    if (mac.length === 12) return mac.match(/.{2}/g).join(':');
+    return mac;
+}
+
+function escapeHtml(s) {
+    if (!s) return '';
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+function getPortalHost() {
+    try {
+        if (portalBase) return new URL(portalBase).hostname;
+        var pu = $('portalUrl').value.trim();
+        return new URL(pu).hostname;
+    } catch(e) { return 'localhost'; }
+}
+
+function cleanCmd(cmd) {
+    if (!cmd) return '';
+    cmd = cmd.trim();
+    if (cmd.indexOf('http://') === 0 || cmd.indexOf('https://') === 0 || cmd.indexOf('rtsp://') === 0) {
+        return cmd.replace(/\/\/localhost(?::\d+)?\//, '//' + getPortalHost() + '/');
+    }
+    var m = cmd.match(/^(?:ffmpeg|auto|ffrt|ff|hls)\s+(https?:\/\/\S+|rtsp:\/\/\S+)/i);
+    if (m) return m[1].replace(/\/\/localhost(?::\d+)?\//, '//' + getPortalHost() + '/');
+    return cmd;
+}
+
+function getAvailablePlayers() {
+    var players = { shaka: false, hls: false, mpegts: false, native: true };
+    try { if (shaka && shaka.Player && typeof shaka !== 'undefined') players.shaka = true; } catch(e) {}
+    try { if (Hls && Hls.isSupported && Hls.isSupported()) players.hls = true; } catch(e) {}
+    try { if (mpegts && mpegts.isSupported && mpegts.isSupported()) players.mpegts = true; } catch(e) {}
+    return players;
+}
+
+function getBestPlayer(url, contentType) {
+    var players = getAvailablePlayers();
+    var u = url.toLowerCase();
+    var isHls = u.indexOf('.m3u8') !== -1 || u.indexOf('extension=m3u8') !== -1 || (contentType && (contentType.indexOf('mpegurl') !== -1 || contentType.indexOf('apple') !== -1));
+    var isMpegTs = u.indexOf('.ts') !== -1 || u.indexOf('extension=ts') !== -1 || u.indexOf('/live/play/') !== -1 || (contentType && contentType.indexOf('mp2t') !== -1);
+    var isDash = u.indexOf('.mpd') !== -1 || (contentType && contentType.indexOf('dash') !== -1);
+    if (isMpegTs && players.mpegts) return 'mpegts';
+    if (players.shaka && (isHls || isDash)) return 'shaka';
+    if (isHls && players.hls) return 'hls';
+    if (players.mpegts) return 'mpegts';
+    if (players.shaka) return 'shaka';
+    return 'native';
+}
+
+function configureShaka(player) {
+    try {
+        player.configure({
+            preferredAudioCodecs: ['mp4a.40.2', 'mp4a.40.5', 'mp4a.69', 'mp4a.6B', 'ac-3', 'ec-3', 'eac3', 'opus', 'vorbis', 'fLaC'],
+            preferredVideoCodecs: ['avc1.42c01e', 'avc1.4d401e', 'avc1.64001f', 'hev1.1.6.L60.90', 'hvc1.1.6.L60.90', 'vp09.00.01.04.01', 'av01.0.01M.04', 'vp8'],
+            streaming: {
+                bufferBehind: 30,
+                rebufferingGoal: 2,
+                bufferingGoal: 10,
+                retryParameters: { maxAttempts: 3, timeout: 10000 },
+            },
+            abr: { enabled: true, defaultBandwidthEstimate: 1000000 },
+            manifest: {
+                dash: { ignoreMinBufferTime: true },
+                hls: { ignoreManifestProgramDateTime: true },
+            },
+        });
+    } catch(e) { console.warn('Shaka config error:', e); }
+}
+
+function detectStreamFormat(url, contentType) {
+    var format = { type: 'unknown', codec: 'unknown', container: 'unknown' };
+    if (url.match(/\.(m3u8|manifest)$/i)) { format.type = 'hls'; format.container = 'm3u8'; }
+    else if (url.match(/\.(mpd|dash)$/i)) { format.type = 'dash'; format.container = 'mpd'; }
+    else if (url.match(/\.(ts|m2t|mpegts)$/i)) { format.type = 'mpegts'; format.container = 'ts'; }
+    else if (url.match(/\.(mp4|mov|webm)$/i)) { format.type = 'mp4'; format.container = url.match(/\.(mp4|mov|webm)$/i)[1]; }
+    if (contentType) {
+        if (contentType.indexOf('mpegurl') !== -1 || contentType.indexOf('apple') !== -1) { format.type = 'hls'; format.container = 'm3u8'; }
+        else if (contentType.indexOf('dash') !== -1) { format.type = 'dash'; format.container = 'mpd'; }
+        else if (contentType.indexOf('mp2t') !== -1) { format.type = 'mpegts'; format.container = 'ts'; }
+        else if (contentType.indexOf('mp4') !== -1) { format.type = 'mp4'; format.container = 'mp4'; }
+    }
+    if (url.match(/avc|h264|hevc|h265|vp8|vp9|av1/i)) format.codec = url.match(/avc|h264|hevc|h265|vp8|vp9|av1/i)[0];
+    else if (format.type === 'hls') format.codec = 'h264';
+    else if (format.type === 'dash') format.codec = 'h264';
+    else if (format.type === 'mpegts') format.codec = 'h264';
+    return format;
+}
+
+function renderCategories() {
+    var list = $('categoryList');
+    var mList = $('mobileCategoryList');
+    var html = '';
+    html += '<button class="stb-cat-btn' + (state.activeGroup === 'All' ? ' active' : '') + '" onclick="selectGroup(\'All\')"><i class="fas fa-th-large mr-2 w-4 text-center"></i>All Channels</button>';
+    state.groups.forEach(function(g) {
+        html += '<button class="stb-cat-btn' + (state.activeGroup === g ? ' active' : '') + '" onclick="selectGroup(\'' + escapeHtml(g) + '\')"><i class="fas fa-folder mr-2 w-4 text-center"></i>' + escapeHtml(g) + '</button>';
+    });
+    list.innerHTML = html;
+    mList.innerHTML = html;
+}
+
+function renderChannels() {
+    var grid = $('channelGrid');
+    var filtered = state.channels.filter(function(c) {
+        if (state.activeGroup !== 'All' && c.group !== state.activeGroup) return false;
+        if (state.searchQuery && c.name.toLowerCase().indexOf(state.searchQuery.toLowerCase()) === -1) return false;
+        return true;
+    });
+    $('channelCount').textContent = filtered.length + ' TV';
+    $('activeCategoryTitle').textContent = state.activeGroup === 'All' ? 'All Channels' : state.activeGroup;
+    if (!filtered.length) { grid.innerHTML = ''; $('emptyState').classList.remove('hidden'); return; }
+    $('emptyState').classList.add('hidden');
+    var html = '';
+    filtered.forEach(function(c) {
+        var first = c.name ? c.name.trim()[0] : '?';
+        html += '<div class="stb-card rounded-xl p-3 cursor-pointer transition" onclick="playChannel(\'' + escapeHtml(c.cmd).replace(/'/g, "\\'") + '\', \'' + escapeHtml(c.name).replace(/'/g, "\\'") + '\', \'' + escapeHtml(c.logo || '').replace(/'/g, "\\'") + '\', \'' + escapeHtml(c.stream_url || '').replace(/'/g, "\\'") + '\')">';
+        html += '<div class="aspect-video bg-black/50 rounded-lg mb-2 flex items-center justify-center overflow-hidden relative group">';
+        if (c.logo) html += '<img src="' + escapeHtml(c.logo) + '" class="w-full h-full object-contain p-2" loading="lazy" onerror="this.style.display=\'none\'">';
+        else html += '<span class="text-2xl font-bold text-zinc-700">' + escapeHtml(first) + '</span>';
+        html += '<div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition"><div class="w-10 h-10 rounded-full stb-btn flex items-center justify-center shadow-lg"><i class="fas fa-play text-white text-sm ml-0.5"></i></div></div>';
+        html += '</div>';
+        html += '<p class="text-xs font-medium text-zinc-300 truncate">' + escapeHtml(c.name) + '</p>';
+        html += '</div>';
+    });
+    grid.innerHTML = html;
+}
+
+function selectGroup(group) {
+    state.activeGroup = group;
+    renderCategories();
+    renderChannels();
+    if (window.innerWidth < 768) $('mobileCatDrawer').classList.add('hidden');
+}
+
+function toggleMobileCat() { $('mobileCatDrawer').classList.toggle('hidden'); }
+
+var mseSourceBuffer = null;
+var mseMediaSource = null;
+var mseReader = null;
+var mseAborter = null;
+
+function destroyPlayer() {
+    if (shakaPlayer) { try { shakaPlayer.destroy(); } catch(e) {} shakaPlayer = null; }
+    if (hlsInstance) { try { hlsInstance.destroy(); } catch(e) {} hlsInstance = null; }
+    if (mpegtsPlayer) { try { mpegtsPlayer.destroy(); } catch(e) {} mpegtsPlayer = null; }
+    if (mseAborter) { try { mseAborter.abort(); } catch(e) {} mseAborter = null; }
+    if (mseReader) { try { mseReader.cancel(); } catch(e) {} mseReader = null; }
+    if (mseMediaSource && mseMediaSource.readyState !== 'closed') { try { mseMediaSource.endOfStream(); } catch(e) {} }
+    mseSourceBuffer = null;
+    mseMediaSource = null;
+    $('playerContainer').innerHTML = '';
+}
+
+function showError(msg) {
+    $('errorDesc').textContent = msg || 'Unknown error';
+    show($('playerError'));
+}
+
+function closePlayer() {
+    destroyPlayer();
+    $('playerModal').close();
+    document.body.style.overflow = '';
+    hide($('playerLoader'));
+    hide($('playerError'));
+    hide($('playerInfo'));
+}
+
+async function playChannel(cmd, name, logo, directUrl) {
+    $('playerChannelName').textContent = name;
+    var logoEl = $('playerChannelLogo');
+    if (logo) logoEl.innerHTML = '<img src="' + escapeHtml(logo) + '" class="w-full h-full object-contain" onerror="this.parentElement.textContent=\'' + escapeHtml(name ? name[0] : '?') + '\'">';
+    else logoEl.textContent = name ? name[0] : '?';
+    hide($('playerError'));
+    show($('playerLoader'));
+    destroyPlayer();
+    var dialog = $('playerModal');
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+    else dialog.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+
+    var streamUrl = '';
+    var streamContentType = '';
+    if (cmd && portalToken && portalBase) {
+        try {
+            var r = await fetch('/api/stalker/stream', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ portal: portalBase, mac: state.mac, token: portalToken, cmd: cmd }),
+            });
+            var j = await r.json();
+            if (j.url) streamUrl = j.url;
+            if (j.contentType) streamContentType = j.contentType;
+        } catch(e) {
+            showError('Cannot resolve stream: ' + e.message);
+            return;
+        }
+    }
+    if (streamUrl && streamUrl.indexOf('stream=&') === -1) {
+        // Looks like a valid create_link URL, use it
+    } else if (directUrl) {
+        streamUrl = directUrl;
+    } else {
+        streamUrl = cleanCmd(cmd);
+    }
+    if (streamUrl) {
+        streamUrl = streamUrl.replace(/\/\/localhost(?::\d+)?\//, '//' + getPortalHost() + '/');
+    }
+    if (!streamUrl) { showError('No stream URL available'); return; }
+    loadStream(streamUrl, streamContentType, cmd);
+}
+
+function loadStream(url, contentType, originalCmd) {
+    var container = $('playerContainer');
+    destroyPlayer();
+    var video = document.createElement('video');
+    video.style.cssText = 'width:100%;height:100%;object-fit:contain;';
+    video.controls = true;
+    video.autoplay = true;
+    video.playsInline = true;
+    video.crossOrigin = 'anonymous';
+    container.appendChild(video);
+
+    var originalUrl = url;
+    var isCrossOrigin = url.indexOf(location.protocol + '//' + location.host) !== 0 && url.indexOf('//' + location.host) === -1;
+    if (isCrossOrigin) {
+        url = '/proxy/stream?url=' + encodeURIComponent(url) + '&token=' + encodeURIComponent(portalToken || '') + '&portal=' + encodeURIComponent(portalBase || '') + '&mac=' + encodeURIComponent(state.mac || '') + '&cmd=' + encodeURIComponent(originalCmd || '');
+    }
+
+    var format = detectStreamFormat(originalUrl, contentType);
+    var playerType = getBestPlayer(originalUrl, contentType);
+
+    video._originalUrl = originalUrl;
+    video._proxiedUrl = url;
+    switch(playerType) {
+        case 'shaka':
+            loadStreamWithShaka(video, url, format, contentType);
+            break;
+        case 'hls':
+            loadStreamWithHls(video, url, format);
+            break;
+        case 'mpegts':
+            loadStreamWithMpegts(video, url, format);
+            break;
+        default:
+            loadStreamWithNative(video, url, format);
+    }
+}
+
+function loadStreamWithShaka(video, url, format, ct) {
+    try {
+        shakaPlayer = new shaka.Player(video);
+        configureShaka(shakaPlayer);
+        shakaPlayer.addEventListener('error', function() {
+            loadStreamFallback(video, url, ct);
+        });
+        shakaPlayer.load(url).then(function() {
+            hide($('playerLoader'));
+            video.play().catch(function() {});
+        }).catch(function() {
+            loadStreamFallback(video, url, ct);
+        });
+        $('playerInfo').textContent = 'Shaka Player';
+        show($('playerInfo'));
+    } catch (e) {
+        loadStreamFallback(video, url, ct);
+    }
+}
+
+function loadStreamWithHls(video, url, format) {
+    hlsInstance = new Hls({ enableWorker: false, lowLatencyMode: true });
+    hlsInstance.loadSource(url);
+    hlsInstance.attachMedia(video);
+    hlsInstance.on(Hls.Events.MANIFEST_PARSED, function() {
+        hide($('playerLoader'));
+        video.play().catch(function() {});
+    });
+    hlsInstance.on(Hls.Events.ERROR, function(e, data) {
+        if (data.fatal) {
+            hide($('playerLoader'));
+            hlsInstance.destroy();
+            if (mpegts && mpegts.isSupported()) {
+                loadStreamMpegtsFallback(video, url);
+            } else {
+                video.src = url;
+                video.play().catch(function() {});
+            }
+        }
+    });
+    video.addEventListener('canplay', function() { hide($('playerLoader')); });
+    $('playerInfo').textContent = 'HLS.js';
+    show($('playerInfo'));
+}
+
+function loadStreamWithMpegts(video, url, format) {
+    try {
+        mpegtsPlayer = mpegts.createPlayer({
+            type: 'mpegts', isLive: true, url: url,
+            liveBufferLatencyChasing: true, liveBufferLatencyMaxLatency: 3, liveBufferLatencyMinLatency: 0.5
+        });
+        mpegtsPlayer.attachMediaElement(video);
+        mpegtsPlayer.load();
+        mpegtsPlayer.play();
+        mpegtsPlayer.on(mpegts.Events.ERROR, function() {
+            hide($('playerLoader'));
+            if (!video._transcodeTried && url.indexOf('/proxy/') !== -1) {
+                video._transcodeTried = true;
+                var tcUrl = url + (url.indexOf('?') === -1 ? '?' : '&') + 'transcode=true';
+                loadStreamWithMpegts(video, tcUrl, format);
+            } else {
+                loadStreamWithNative(video, url, format);
+            }
+        });
+        video.addEventListener('canplay', function() { hide($('playerLoader')); });
+        setTimeout(function() { hide($('playerLoader')); }, 3000);
+        $('playerInfo').textContent = 'mpegts.js';
+        show($('playerInfo'));
+    } catch(e) {
+        loadStreamWithNative(video, url, format);
+    }
+}
+
+function loadStreamWithNative(video, url, format) {
+    video.src = url;
+    video.addEventListener('error', function() {
+        if (this.error && !this._mseTried) {
+            this._mseTried = true;
+            video.src = '';
+            if (mpegts && mpegts.isSupported() && !this._mpegtsTried) {
+                this._mpegtsTried = true;
+                loadStreamWithMpegts(video, url, format);
+            } else {
+                loadStreamMse(video, video._originalUrl || url);
+            }
+        }
+    });
+    video.addEventListener('canplay', function() { hide($('playerLoader')); });
+    video.play().catch(function() {
+        setTimeout(function() {
+            if (video.readyState >= 2) { hide($('playerLoader')); video.play().catch(function() {}); }
+            else if (!$('playerLoader').classList.contains('hidden') && !video._mseTried) {
+                video._mseTried = true; video.src = ''; loadStreamMse(video, video._originalUrl || url);
+            }
+        }, 3000);
+    });
+    setTimeout(function() {
+        if (!$('playerLoader').classList.contains('hidden') && !video._mseTried) {
+            video._mseTried = true; video.src = ''; loadStreamMse(video, video._originalUrl || url);
+        }
+    }, 5000);
+    setTimeout(function() { hide($('playerLoader')); }, 12000);
+}
+
+function detectUrlFormat(u, ct) {
+    return {
+        isHls: u.indexOf('.m3u8') !== -1 || (ct && (ct.indexOf('mpegurl') !== -1 || ct.indexOf('apple') !== -1)),
+        isMpegTs: u.indexOf('.ts') !== -1 || (ct && ct.indexOf('mp2t') !== -1),
+        isDash: u.indexOf('.mpd') !== -1 || (ct && ct.indexOf('dash') !== -1),
+    };
+}
+
+function loadStreamFallback(video, url, contentType) {
+    var detectUrl = video._originalUrl || url;
+    var fmt = detectUrlFormat(detectUrl, contentType);
+    var isHls = fmt.isHls, isMpegTs = fmt.isMpegTs, isDash = fmt.isDash;
+    if (isHls && Hls && Hls.isSupported()) {
+        hlsInstance = new Hls({ enableWorker: false, lowLatencyMode: true });
+        hlsInstance.loadSource(url);
+        hlsInstance.attachMedia(video);
+        hlsInstance.on(Hls.Events.MANIFEST_PARSED, function() {
+            hide($('playerLoader'));
+            video.play().catch(function() {});
+        });
+        hlsInstance.on(Hls.Events.ERROR, function(e, data) {
+            if (data.fatal) {
+                hide($('playerLoader'));
+                if (mpegts && mpegts.isSupported()) {
+                    loadStreamMpegtsFallback(video, url);
+                }
+            }
+        });
+        video.addEventListener('canplay', function() { hide($('playerLoader')); });
+        $('playerInfo').textContent = 'HLS.js';
+        show($('playerInfo'));
+        return;
+    }
+    if (isDash && shaka && shaka.Player) {
+        try {
+            shakaPlayer = new shaka.Player(video);
+            configureShaka(shakaPlayer);
+            shakaPlayer.load(url).then(function() {
+                hide($('playerLoader')); video.play().catch(function() {});
+            });
+            $('playerInfo').textContent = 'Shaka (DASH)';
+            show($('playerInfo'));
+            return;
+        } catch(e) {}
+    }
+    if (isMpegTs && mpegts && mpegts.isSupported()) {
+        loadStreamMpegtsFallback(video, url);
+        return;
+    }
+    if (mpegts && mpegts.isSupported()) {
+        loadStreamMpegtsFallback(video, url);
+        return;
+    }
+    video.src = url;
+    video.addEventListener('error', function() {
+        if (this.error && !this._mseTried) {
+            this._mseTried = true;
+            video.src = '';
+            loadStreamMse(video, video._originalUrl || url);
+        }
+    });
+    video.addEventListener('canplay', function() { hide($('playerLoader')); });
+    video.play().catch(function() {
+        setTimeout(function() {
+            if (video.readyState >= 2) { hide($('playerLoader')); video.play().catch(function() {}); }
+            else if (!$('playerLoader').classList.contains('hidden') && !video._mseTried) {
+                video._mseTried = true; video.src = ''; loadStreamMse(video, video._originalUrl || url);
+            }
+        }, 3000);
+    });
+    setTimeout(function() {
+        if (!$('playerLoader').classList.contains('hidden') && !video._mseTried) {
+            video._mseTried = true; video.src = ''; loadStreamMse(video, video._originalUrl || url);
+        }
+    }, 5000);
+    setTimeout(function() { hide($('playerLoader')); }, 12000);
+}
+
+function loadStreamMpegtsFallback(video, url) {
+    try {
+        mpegtsPlayer = mpegts.createPlayer({
+            type: 'mpegts', isLive: true, url: url,
+            liveBufferLatencyChasing: true, liveBufferLatencyMaxLatency: 3, liveBufferLatencyMinLatency: 0.5
+        });
+        mpegtsPlayer.attachMediaElement(video);
+        mpegtsPlayer.load();
+        mpegtsPlayer.play();
+        mpegtsPlayer.on(mpegts.Events.ERROR, function() {
+            hide($('playerLoader'));
+            if (window.mpegtsFallbackTimer) clearTimeout(window.mpegtsFallbackTimer);
+            mpegtsPlayer.destroy();
+            mpegtsPlayer = null;
+            video.src = url;
+            video.play().catch(function() {});
+        });
+        video.addEventListener('canplay', function() { hide($('playerLoader')); });
+        $('playerInfo').textContent = 'mpegts.js';
+        show($('playerInfo'));
+    } catch(e) {
+        video.src = url;
+        video.play().catch(function() {});
+    }
+}
+
+function loadStreamMse(video, url) {
+    if (!window.MediaSource) { showError('Browser cannot play this stream'); return; }
+    mseMediaSource = new MediaSource();
+    video.src = URL.createObjectURL(mseMediaSource);
+    mseMediaSource.addEventListener('sourceopen', function() {
+        var mimeTypes = ['video/mp2t; codecs="avc1.42c01e,mp4a.40.2"', 'video/mp2t; codecs="hvc1.1.6.L60.90,mp4a.40.2"', 'video/mp2t', 'video/mpeg', 'video/mp4'];
+        var mime = '';
+        for (var i = 0; i < mimeTypes.length; i++) {
+            if (MediaSource.isTypeSupported(mimeTypes[i])) { mime = mimeTypes[i]; break; }
+        }
+        if (!mime) {
+            hide($('playerLoader'));
+            video.src = video._proxiedUrl || url;
+            video.play().catch(function(){});
+            return;
+        }
+        try { mseSourceBuffer = mseMediaSource.addSourceBuffer(mime); } catch(e) { showError('Codec not supported'); return; }
+        hide($('playerLoader'));
+        mseAborter = new AbortController();
+        mseSourceBuffer.addEventListener('updateend', function() { if (mseReader) mseReader.read().then(push, function() {}); });
+        function push(result) {
+            if (result.done) { try { mseMediaSource.endOfStream(); } catch(e) {} return; }
+            if (mseSourceBuffer && !mseSourceBuffer.updating) mseSourceBuffer.appendBuffer(result.value);
+        }
+        fetch('/api/stalker/stream-proxy', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: url, token: portalToken || '' }), signal: mseAborter.signal,
+        }).then(function(res) {
+            if (!res.ok) { showError('Stream error: ' + res.status); return; }
+            if (!res.body) { showError('Stream not available'); return; }
+            mseReader = res.body.getReader();
+            mseReader.read().then(push, function() {});
+        }).catch(function(e) {
+            if (e.name !== 'AbortError') showError('Failed to load stream: ' + e.message);
+        });
+    });
+}
+
+function showErrorState(msg) { var el = $('loginError'); el.textContent = msg; el.classList.remove('hidden'); }
+
+async function readNdjsonStream(res, handlers) {
+    var reader = res.body.getReader();
+    var decoder = new TextDecoder();
+    var buf = '';
+    while (true) {
+        var result = await reader.read();
+        if (result.done) break;
+        buf += decoder.decode(result.value, { stream: true });
+        var nl;
+        while ((nl = buf.indexOf('\n')) >= 0) {
+            var line = buf.slice(0, nl).trim();
+            buf = buf.slice(nl + 1);
+            if (!line) continue;
+            try { var evt = JSON.parse(line); if (handlers[evt.event]) handlers[evt.event](evt); } catch(e) {}
+        }
+    }
+    if (buf.trim()) {
+        try { var evt = JSON.parse(buf.trim()); if (handlers[evt.event]) handlers[evt.event](evt); } catch(e) {}
+    }
+}
+
+$('portalForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    var url = $('portalUrl').value.trim();
+    var mac = formatMac($('portalMac').value.trim());
+    if (!url) { showErrorState('Enter portal URL'); return; }
+    if (mac.length !== 17) { showErrorState('Invalid MAC. Use format: 00:1A:79:XX:XX:XX'); return; }
+    hide($('loginError'));
+    $('connectBtn').querySelector('span').textContent = 'Connecting...';
+    $('connectBtn').disabled = true;
+    $('loginStatus').classList.remove('hidden');
+    $('loginStatus').style.display = 'flex';
+    $('loginStatusText').textContent = 'Connecting to portal...';
+    show($('loginStatus'));
+    try {
+        $('loginStatusText').textContent = 'Authenticating with portal...';
+        var r = await fetch('/api/stalker/inspect', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ portal: url, mac: mac }),
+        });
+        var inspect = await r.json();
+        if (!inspect.ok) throw new Error(inspect.error || 'Connection failed');
+        portalToken = inspect.token;
+        portalBase = inspect.resolved_base;
+        portalOriginal = url;
+        state.mac = mac;
+        $('loginStatusText').textContent = 'Loading channels...';
+        var convertRes = await fetch('/api/stalker/convert', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ portal: url, mac: mac, types: ['live'], maxPages: 50 }),
+        });
+        if (!convertRes.ok) { var errText = await convertRes.text(); throw new Error('Convert failed: ' + errText); }
+        var channels = [];
+        var seenUrls = {};
+        await readNdjsonStream(convertRes, {
+            channel: function(evt) {
+                var c = evt.channel;
+                if (!c || !c.name) return;
+                var streamUrl = c.stream_url || cleanCmd(c.cmd);
+                if (!streamUrl || seenUrls[streamUrl]) return;
+                seenUrls[streamUrl] = true;
+                channels.push({ name: c.name, logo: c.logo || '', group: c.group || 'General', cmd: c.cmd || '', stream_url: streamUrl });
+            },
+            error: function(evt) { console.warn('Convert error:', evt.message); }
+        });
+        if (!channels.length) throw new Error('No channels found');
+        state.channels = channels;
+        state.groups = Array.from(new Set(channels.map(function(c) { return c.group; }))).sort();
+        state.activeGroup = 'All';
+        state.searchQuery = '';
+        $('portalName').textContent = url.replace(/https?:\/\//, '').split('/')[0];
+        hide($('loginScreen'));
+        show($('mainScreen'));
+        show($('mobileCatToggle'));
+        renderCategories();
+        renderChannels();
+        toast('Connected: ' + channels.length + ' channels loaded');
+    } catch(err) {
+        showErrorState(err.message);
+        console.error(err);
+    } finally {
+        hide($('loginStatus'));
+        $('connectBtn').querySelector('span').textContent = 'Connect to Portal';
+        $('connectBtn').disabled = false;
+    }
+});
+
+$('disconnectBtn').addEventListener('click', function() {
+    closePlayer();
+    show($('loginScreen'));
+    hide($('mainScreen'));
+    hide($('mobileCatToggle'));
+    state.channels = [];
+    state.groups = [];
+    portalToken = '';
+    portalBase = '';
+    portalOriginal = '';
+    toast('Disconnected');
+});
+
+$('searchInput').addEventListener('input', function() {
+    state.searchQuery = this.value;
+    renderChannels();
+});
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && $('playerModal').open) closePlayer();
+});
+
+$('portalMac').addEventListener('input', function() {
+    this.value = this.value.replace(/[^a-fA-F0-9:]/g, '');
+});
+</script>
+</body>
+</html>
